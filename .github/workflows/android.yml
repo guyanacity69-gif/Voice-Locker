@@ -1,0 +1,59 @@
+name: Build VoiceLocker APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Extract project archive
+        run: |
+          set -eux
+          mkdir -p extracted
+          unzip -o VoiceLockerProject.zip -d extracted
+          echo "Archive contents:"
+          find extracted -maxdepth 5 -type f | sort | head -200
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build debug APK
+        run: |
+          set -eux
+          WRAPPER="$(find extracted -type f -name gradlew -print -quit)"
+          if [ -n "$WRAPPER" ]; then
+            chmod +x "$WRAPPER"
+            cd "$(dirname "$WRAPPER")"
+            ./gradlew assembleDebug
+          else
+            BUILD_FILE="$(find extracted -type f \( -name build.gradle -o -name build.gradle.kts \) -print -quit)"
+            if [ -z "$BUILD_FILE" ]; then
+              echo "No Gradle Android project found in VoiceLockerProject.zip"
+              exit 1
+            fi
+            cd "$(dirname "$BUILD_FILE")"
+            gradle assembleDebug
+          fi
+
+      - name: Upload APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: VoiceLocker-debug-apk
+          path: extracted/**/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
